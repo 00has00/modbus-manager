@@ -14,7 +14,7 @@ from pymodbus.client.sync import ModbusSerialClient as ModbusClient
 
 ##
 ##Node Configureation
-MQTT_SERVER = "gabriel"
+MQTT_SERVER = "mqtt-server"
 STATE = "active"
 LOCATION = "garage"
 STATUS_INTERVAL=300
