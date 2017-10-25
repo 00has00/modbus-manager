@@ -4,6 +4,8 @@ It connects to a PLC (in this case a DL06) via ModBus RTU and
 then sends data back to an automation controller (in this case OpenHab)
 via an MQTT message bus.
 
+It supports receiving commands via MQTT and sending status updates.
+
  - The top part of the script is configruation for services and sensors.
 
 ## Prerequisites
