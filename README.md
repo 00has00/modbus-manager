@@ -12,4 +12,4 @@ It supports receiving commands via MQTT and sending status updates.
   - Python 2.7   (Upgrade to 3.x required changes to threading... tfh)
   - Python 2.7 Threading libraries
   - Paho MQTT Client and python libraries (eclipse.org or pip)
-  - PyModbus python libraries (pip)
+  - PyModbus python libraries (pip) - will install a number of other dependancies.
