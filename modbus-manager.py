@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python3
 
 ##
 ##
@@ -9,7 +9,7 @@ import time
 import json
 import paho.mqtt.client as mqtt
 from collections import deque
-from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+from pymodbus.client import ModbusSerialClient as ModbusClient
 
 
 ##
@@ -18,6 +18,8 @@ MQTT_SERVER = "mqtt-server"
 STATE = "active"
 LOCATION = "garage"
 STATUS_INTERVAL=300
+
+mqttretries = 2
 
 BASE = "/" + STATE + "/" + LOCATION
 SUB = BASE + "/+/control"
@@ -135,10 +137,12 @@ sensors = {
 ##
 ## MQTT Callback Functions
 def mqtt_on_connect(client, userdata, flags, rc):
+    global mqttretries
     mqttretries = 0
-    print "MQTT Connection established to host: " + str(MQTT_SERVER)
+    print("MQTT Connection established to host: " + str(MQTT_SERVER))
 
 def mqtt_on_disconnect(client, userdata, rc):
+    global mqttretries
     if rc != 0:
         print("Unexpected disconnection.")
     mqttretries += 1
@@ -149,17 +153,22 @@ def mqtt_on_disconnect(client, userdata, rc):
 
 def mqtt_on_message(client, userdata, message):
     #print("MQTT Received message '" + str(message.payload) + "' on topic '" + message.topic + "' with QoS " + str(message.qos))
+    try:
+        payload = message.payload.decode('utf-8')
+    except UnicodeDecodeError:
+        payload = message.payload
+
     fractions = message.topic.split("/")
     if fractions[1] == 'active':
         if fractions[2] == LOCATION:
             if fractions[4] == 'control':
                 ## SPLIT OUT SYSTEM COMMAND PROCESSING TO A SEPERATE FUNCTION.
-                if fractions[3] == 'system' and fractions[4] == 'control' and message.payload == 'showSensors':
-                    #print "publishing to: " + SYS_STATUS_QUEUE
+                if fractions[3] == 'system' and fractions[4] == 'control' and payload == 'showSensors':
+                    #print("publishing to: " + SYS_STATUS_QUEUE)
                     mqttc.publish( SYS_STATUS_QUEUE, json.dumps(sensors) )
                 else:
                     ## NEED TO MAKE MORE GENERIC ONE DAY, VERY FOCUSED ON receiving ON|OFF MESSAGES
-                    msg = { 'sensor':fractions[3], 'action':fractions[4], 'msg':message.payload }
+                    msg = { 'sensor':fractions[3], 'action':fractions[4], 'msg':payload }
                     with messageQueueLock:
                         messageQueue.append(msg)
 
@@ -168,7 +177,7 @@ def mqtt_on_message(client, userdata, message):
 ## Modbus Functions
 
 def modbus_bit_read(address):
-    sts = modbusHandle.read_coils(int(address),count=1,unit=MODBUS_UNITID)
+    sts = modbusHandle.read_coils(int(address),count=1,slave=MODBUS_UNITID)
     if sts.bits[0] == True:
         return 1
     else:
@@ -177,19 +186,19 @@ def modbus_bit_read(address):
 def modbus_bit_write(address, data=None):
     if data == None:
         data =0
-    #print "Setting address" + str(hex(address)) + " to: " + str(data)
+    #print("Setting address" + str(hex(address)) + " to: " + str(data))
     if data == 0:
-        sts = modbusHandle.write_coil(int(address), False, unit=MODBUS_UNITID)
+        sts = modbusHandle.write_coil(int(address), False, slave=MODBUS_UNITID)
         return sts
     if data == 1:
-        sts = modbusHandle.write_coil(int(address), True, unit=MODBUS_UNITID)
+        sts = modbusHandle.write_coil(int(address), True, slave=MODBUS_UNITID)
         return sts
     return 0xff
 
 def modbus_input_read(address):
-    #print "Reading Address" + str(address)
+    #print("Reading Address" + str(address))
     #return 0
-    sts = modbusHandle.read_discrete_inputs(int(address), count=1, unit=MODBUS_UNITID)
+    sts = modbusHandle.read_discrete_inputs(int(address), count=1, slave=MODBUS_UNITID)
     if sts.bits[0] == True:
         return 1
     else:
@@ -199,15 +208,15 @@ def modbus_analog_read(address, register=None):
     if register == None:
         register = 0
 
-    #print "Reading address: " + str(address) + " Register: " + str(register)
+    #print("Reading address: " + str(address) + " Register: " + str(register))
     #return 2222
 
-    sts = modbusHandle.read_holding_registers(address, count=4, unit=MODBUS_UNITID)
-    #print sts
+    sts = modbusHandle.read_holding_registers(address, count=4, slave=MODBUS_UNITID)
+    #print(sts)
     try:
         assert(sts.function_code < 0x80)
-    except:
-        print "Modbus Error: " + str(MODBUS_EXCEPTIONS[sts.exception_code])
+    except Exception as exc:
+        print("Modbus Error: " + str(MODBUS_EXCEPTIONS[sts.exception_code]))
         return -1
     return int(sts.registers[register])
 
@@ -238,24 +247,24 @@ TYPE_TO_FUNCTIONS_MAP = {
 def sensor_activity(sensor, instruction, data=None):
 
     if sensor == None:
-        print "sensor_activity: request for action on non-existent sensor"
+        print("sensor_activity: request for action on non-existent sensor")
         mqttc.publish(SYS_MESSAGE_QUEUE, payload="sensor_activity; request for action on non-existent sensor")
         return -1
 
     if instruction not in [ 'init', 'read', 'write' ]:
-        print "sensor_activity: no comprehension of instruction: " + str(instruction)
+        print("sensor_activity: no comprehension of instruction: " + str(instruction))
         return -1
     
     if instruction == 'init':
         run_function = TYPE_TO_FUNCTIONS_MAP[sensor['type']]['read']
         if sensor['init'] == 'current':
-          #print str(run_function)
+          #print(str(run_function))
             if 'register' in sensor:
                 status = run_function( sensor['address'], register=sensor['register'] )
             else:
                 status = run_function( sensor['address'] )
             sensor['status'] = status
-            #print "Status = " + str(status)
+            #print("Status = " + str(status))
         if sensor['init'] == 'default':
             run_function = TYPE_TO_FUNCTIONS_MAP[sensor['type']]['write']
             if 'register' in sensor:
@@ -274,7 +283,7 @@ def sensor_activity(sensor, instruction, data=None):
 	    status = str(ret) + " " + str(sensor['sensorMin']) + " " + str(sensor['sensorMax']) + " " + str(sensor['outputMax'])
         else:
             status = run_function(sensor['address'])
-    #print "Status = " + str(status)
+    #print("Status = " + str(status))
     return status
 
 
@@ -288,14 +297,14 @@ def mqttManager():
 
 def commandManager():
     lcl = threading.local()
-    while 1:
+    while True:
         time.sleep(5)
         if len(messageQueue) != 0:
             with messageQueueLock:
                 lcl.msg = messageQueue.popleft()
             if lcl.msg['sensor'] not in sensors:
                 lcl.notice = "Received message for non-existant sensor: " + lcl.msg['sensor'] + "... Discarding."
-                #print lcl.notice
+                #print(lcl.notice)
                 mqttc.publish(SYS_MESSAGE_QUEUE, payload=lcl.notice)
                 continue
             if lcl.msg['action'] == 'control' and 'write' in sensors[lcl.msg['sensor']]['access']:
@@ -320,13 +329,13 @@ def statusManager():
     lcl = threading.local()
     lcl.sensors_to_status = []
 
-    print "Queueing Sensors for statusing..."
+    print("Queueing Sensors for statusing...")
     for sensor in sensors:
         if 'status-update' in sensors[sensor]:
             lcl.sensors_to_status.append(sensor)
-            print "  Added: " + str(sensor)
+            print("  Added: " + str(sensor))
 
-    while 1:
+    while True:
         for sensor in lcl.sensors_to_status:
             with modbusQueueLock:
                 lcl.status = sensor_activity(sensors[sensor], 'read')
@@ -359,8 +368,12 @@ tStatusManager.daemon = True
 
 ##
 ## Setup MQTT
-print "Setting up MQTT handlers..."
-mqttc = mqtt.Client()
+print("Setting up MQTT handlers...")
+try:
+    from paho.mqtt.enums import CallbackAPIVersion
+    mqttc = mqtt.Client(CallbackAPIVersion.VERSION1)
+except ImportError:
+    mqttc = mqtt.Client()
 mqttc.on_connect = mqtt_on_connect
 mqttc.on_message = mqtt_on_message
 mqttc.on_disconnect = mqtt_on_disconnect
@@ -373,37 +386,37 @@ time.sleep(1)
 
 ##
 ## Setup ModBus
-print "Setting up Modbus handlers..."
-modbusHandle = ModbusClient(MODBUS_TYPE, port=MODBUS_PORT, baudrate=MODBUS_BAUDRATE, unit_id=MODBUS_UNITID)
+print("Setting up Modbus handlers...")
+modbusHandle = ModbusClient(port=MODBUS_PORT, baudrate=MODBUS_BAUDRATE)
 if modbusHandle.connect() == False:
     mqttc.publish(SYS_MESSAGE_QUEUE, payload="ERR_FATAL: Failed to start ModBus connection")
     exit()
 else:
-    print "ModBus Connection Established"
+    print("ModBus Connection Established")
 
 
 ##
 ## Initialise sensor data structures
-print "Initialising Sensors..."
+print("Initialising Sensors...")
 for sensor in sensors:
-    #print ("{0}: {1}").format(sensor, sensors[sensor]['type'])
+    #print("{0}: {1}".format(sensor, sensors[sensor]['type']))
     with modbusQueueLock:
         sensor_activity(sensors[sensor], 'init')
 
 
 ##
 ## Starting Command Manager
-print "Starting CommandManager Thread..."
+print("Starting CommandManager Thread...")
 tCommandManager.start()
 
 ##
 ## Kick off Status_manager
-print "Starting StatusManager Thread..."
+print("Starting StatusManager Thread...")
 tStatusManager.start()
 
 time.sleep(1)
-print "Ready!"
+print("Ready!")
 
-while 1:
+while True:
     time.sleep(300)
-    print "--MARK--"
+    print("--MARK--")
