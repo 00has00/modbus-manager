@@ -60,7 +60,7 @@ sensors = {
         'init':'default',
         'access':('read','write'),
         'status':0,
-	'status-update':1,
+        'status-update':1,
         'control':"",
         'type':'modbus-memory',
         'address':3078
@@ -70,7 +70,7 @@ sensors = {
         'init':'default',
         'access':('read','write'),
         'status':0,
-	'status-update':1,
+        'status-update':1,
         'control':"",
         'type':'modbus-memory',
         'address':3072
@@ -279,8 +279,8 @@ def sensor_activity(sensor, instruction, data=None):
     else:
         if 'register' in sensor:
             ret = run_function(sensor['address'], register=sensor['register'] )
-	    # analog sensors need to return, not just the value, but the min, max, and output transform.
-	    status = str(ret) + " " + str(sensor['sensorMin']) + " " + str(sensor['sensorMax']) + " " + str(sensor['outputMax'])
+            # analog sensors need to return, not just the value, but the min, max, and output transform.
+            status = str(ret) + " " + str(sensor['sensorMin']) + " " + str(sensor['sensorMax']) + " " + str(sensor['outputMax'])
         else:
             status = run_function(sensor['address'])
     #print("Status = " + str(status))
