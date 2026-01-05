@@ -308,12 +308,12 @@ def commandManager():
                 mqttc.publish(SYS_MESSAGE_QUEUE, payload=lcl.notice)
                 continue
             if lcl.msg['action'] == 'control' and 'write' in sensors[lcl.msg['sensor']]['access']:
-                if lcl.msg['msg'] == 'on':
+                if lcl.msg['msg'] == 'on' or lcl.msg['msg'] == '1':
                     with modbusQueueLock:
                         sensor_activity(sensors[lcl.msg['sensor']], 'write', 1)
                     sensors[lcl.msg['sensor']]['status'] = '1'
                     mqttc.publish(BASE + "/" + lcl.msg['sensor'] + "/status", payload='1')
-                elif lcl.msg['msg'] == 'off':
+                elif lcl.msg['msg'] == 'off' or lcl.msg['msg'] == '0':
                     with modbusQueueLock:
                         sensor_activity(sensors[lcl.msg['sensor']], 'write', 0)
                     sensors[lcl.msg['sensor']]['status'] = '0'
