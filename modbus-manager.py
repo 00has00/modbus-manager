@@ -66,6 +66,16 @@ sensors = {
         'address':3078
         },
 
+    'bore_run_full': {
+        'init':'default',
+        'access':('read','write'),
+        'status':0,
+        'status-update':1,
+        'control':"",
+        'type':'modbus-memory',
+        'address':3084
+        },
+
     'transfer_pump_run': {
         'init':'default',
         'access':('read','write'),
